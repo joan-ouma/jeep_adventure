@@ -1,45 +1,50 @@
+// main.js - Logic & Rendering
+
 var gl;
 var shaderProgram;
-
-// Buffers
-var cubeBuffer;
-var cubeIndexBuffer;
 
 // Matrices
 var projectionMatrix = mat4.create();
 var modelViewMatrix = mat4.create();
 
-// State variables (The Jeep's position and rotation)
+// Jeep State
 var jeepX = 0;
-var jeepZ = -10; // Start further back
+var jeepZ = -10;
 var jeepAngle = 0;
-var frontWheelAngle = 0; //Variable for steering the front wheels
+var frontWheelAngle = 0;
 var wheelRotation = 0;
 var speed = 0;
 var turnSpeed = 0;
 
-// Key states
+// Camera State
+var cameraDistance = 15;
+var cameraHeight = 5;
+
 var currentlyPressedKeys = {};
 
-// Using uniform color so we can paint wheels black and body green easily
+// Shader Source (Simple versions for Day 3)
 const vsSource = `
     attribute vec3 aVertexPosition;
-    
     uniform mat4 uModelViewMatrix;
     uniform mat4 uProjectionMatrix;
-    
+    varying float vHeight;
     void main(void) {
         gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aVertexPosition, 1.0);
+        vHeight = aVertexPosition.y; 
     }
 `;
 
-// Shader Code (Fragment Shader)- takes uniform colour
 const fsSource = `
     precision mediump float;
     uniform vec4 uColor;
-    
+    varying float vHeight;
     void main(void) {
-        gl_FragColor = uColor;
+        // Darken low valleys for fake shadow effect
+        if(uColor.g > 0.4 && uColor.b < 0.2) { 
+             gl_FragColor = vec4(uColor.rgb * (0.5 + vHeight * 0.2), 1.0);
+        } else {
+             gl_FragColor = uColor;
+        }
     }
 `;
 
@@ -49,226 +54,117 @@ window.onload = function() {
     canvas.height = window.innerHeight;
 
     gl = canvas.getContext('webgl');
-
     if (!gl) { alert('No WebGL'); return; }
 
-    gl.clearColor(0.2, 0.2, 0.2, 1.0); // Dark gray background (road-ish)
+    gl.clearColor(0.5, 0.7, 1.0, 1.0); // Sky Blue
     gl.enable(gl.DEPTH_TEST);
 
-    initShaders();
-    initBuffers();
+    initShaders(); // In utils.js
+    initBuffers(); // In geometry.js
 
-    // Event Listeners for Keyboard
-    document.onkeydown = handleKeyDown;
-    document.onkeyup = handleKeyUp;
+    document.onkeydown = (e) => currentlyPressedKeys[e.key] = true;
+    document.onkeyup = (e) => currentlyPressedKeys[e.key] = false;
 
     requestAnimationFrame(render);
 };
 
-function handleKeyDown(event) {
-    currentlyPressedKeys[event.key] = true;
-}
-
-function handleKeyUp(event) {
-    currentlyPressedKeys[event.key] = false;
-}
-
 function handleKeys() {
-    // W - Forward
-    if (currentlyPressedKeys["w"] || currentlyPressedKeys["W"]) {
-        speed = 0.1;
-    } else if (currentlyPressedKeys["s"] || currentlyPressedKeys["S"]) {
-        speed = -0.1;
-    } else {
-        speed = 0;
-    }
+    if (currentlyPressedKeys["w"] || currentlyPressedKeys["W"]) speed = 0.2;
+    else if (currentlyPressedKeys["s"] || currentlyPressedKeys["S"]) speed = -0.1;
+    else speed = 0;
 
-    // A/D - Turn clockwise and anticlockwise respectively
     if (currentlyPressedKeys["a"] || currentlyPressedKeys["A"]) {
         turnSpeed = 0.05;
-        frontWheelAngle = 0.5; // Turn wheels left (approx 30 degrees)
+        frontWheelAngle = 0.5;
     } else if (currentlyPressedKeys["d"] || currentlyPressedKeys["D"]) {
         turnSpeed = -0.05;
-        frontWheelAngle = -0.5; // Turn wheels right
+        frontWheelAngle = -0.5;
     } else {
         turnSpeed = 0;
-        frontWheelAngle = 0; // Straighten wheels if not turning
+        frontWheelAngle = 0;
     }
 }
 
-function initShaders() {
-    var vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
-    var fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
-
-    shaderProgram = gl.createProgram();
-    gl.attachShader(shaderProgram, vertexShader);
-    gl.attachShader(shaderProgram, fragmentShader);
-    gl.linkProgram(shaderProgram);
-
-    if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
-        console.error('Shader error: ' + gl.getProgramInfoLog(shaderProgram));
-        return;
-    }
-
-    gl.useProgram(shaderProgram);
-
-    shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, 'aVertexPosition');
-    gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
-
-    shaderProgram.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uProjectionMatrix");
-    shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uModelViewMatrix");
-    shaderProgram.colorUniform = gl.getUniformLocation(shaderProgram, "uColor");
-}
-
-function loadShader(gl, type, source) {
-    var shader = gl.createShader(type);
-    gl.shaderSource(shader, source);
-    gl.compileShader(shader);
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        console.error(gl.getShaderInfoLog(shader));
-        gl.deleteShader(shader);
-        return null;
-    }
-    return shader;
-}
-
-function initBuffers() {
-    cubeBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, cubeBuffer);
-
-    // Standard 1x1x1 Cube
-    var vertices = [
-        // Front face
-        -1.0, -1.0,  1.0,
-        1.0, -1.0,  1.0,
-        1.0,  1.0,  1.0,
-        -1.0,  1.0,  1.0,
-        // Back face
-        -1.0, -1.0, -1.0,
-        -1.0,  1.0, -1.0,
-        1.0,  1.0, -1.0,
-        1.0, -1.0, -1.0,
-        // Top face
-        -1.0,  1.0, -1.0,
-        -1.0,  1.0,  1.0,
-        1.0,  1.0,  1.0,
-        1.0,  1.0, -1.0,
-        // Bottom face
-        -1.0, -1.0, -1.0,
-        1.0, -1.0, -1.0,
-        1.0, -1.0,  1.0,
-        -1.0, -1.0,  1.0,
-        // Right face
-        1.0, -1.0, -1.0,
-        1.0,  1.0, -1.0,
-        1.0,  1.0,  1.0,
-        1.0, -1.0,  1.0,
-        // Left face
-        -1.0, -1.0, -1.0,
-        -1.0, -1.0,  1.0,
-        -1.0,  1.0,  1.0,
-        -1.0,  1.0, -1.0,
-    ];
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
-    cubeBuffer.itemSize = 3;
-    cubeBuffer.numItems = 24;
-
-    cubeIndexBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cubeIndexBuffer);
-    var cubeVertexIndices = [
-        0, 1, 2,      0, 2, 3,    // Front
-        4, 5, 6,      4, 6, 7,    // Back
-        8, 9, 10,     8, 10, 11,  // Top
-        12, 13, 14,   12, 14, 15, // Bottom
-        16, 17, 18,   16, 18, 19, // Right
-        20, 21, 22,   20, 22, 23  // Left
-    ];
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(cubeVertexIndices), gl.STATIC_DRAW);
-}
-
-//Draws a scaled cube at the current matrix location
 function drawCube(matrix, color, scale) {
-    // 1. Send Matrix
     var mvMatrix = mat4.clone(matrix);
-    mat4.scale(mvMatrix, mvMatrix, scale); // Scale it (make wheels small, body big)
-
+    mat4.scale(mvMatrix, mvMatrix, scale);
     gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix);
-
-    // 2. Send Color
     gl.uniform4fv(shaderProgram.colorUniform, color);
 
-    // 3. Draw
     gl.bindBuffer(gl.ARRAY_BUFFER, cubeBuffer);
     gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, cubeBuffer.itemSize, gl.FLOAT, false, 0, 0);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cubeIndexBuffer);
-    gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
+    gl.drawElements(gl.TRIANGLES, cubeBuffer.numItems, gl.UNSIGNED_SHORT, 0);
 }
 
 function render() {
     handleKeys();
 
-    // Update Physics
     jeepAngle += turnSpeed;
-    // Calculate new X/Z based on angle (Basic Trigonometry)
     jeepX -= Math.sin(jeepAngle) * speed;
     jeepZ -= Math.cos(jeepAngle) * speed;
 
-    if(speed !== 0) {
-        wheelRotation += speed * 10; // Wheels spin faster than car moves
-    }
+    // Get height from the terrain function in geometry.js
+    var currentHeight = getTerrainHeight(jeepX, jeepZ);
+
+    if(speed !== 0) wheelRotation += speed * 10;
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    // Setup Camera (Perspective)
-    mat4.perspective(projectionMatrix, 45 * Math.PI / 180, gl.canvas.width / gl.canvas.height, 0.1, 100.0);
+    mat4.perspective(projectionMatrix, 45 * Math.PI / 180, gl.canvas.width / gl.canvas.height, 0.1, 200.0);
     gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, projectionMatrix);
 
-    // --- SCENE GRAPH START ---
-
-    // 1. World View (Camera) - Move the whole world opposite to the jeep to follow it (Chase Cam Basic)
-    //Camera fixed high up so we can see the driving
+    // --- CAMERA (Chase Logic) ---
     mat4.identity(modelViewMatrix);
-    mat4.translate(modelViewMatrix, modelViewMatrix, [0, -5, -20]); // Move camera up and back
-    mat4.rotate(modelViewMatrix, modelViewMatrix, 0.3, [1, 0, 0]); // Tilt down slightly
+    mat4.translate(modelViewMatrix, modelViewMatrix, [0, -cameraHeight, -cameraDistance]);
+    mat4.rotate(modelViewMatrix, modelViewMatrix, 0.3, [1, 0, 0]);
+    mat4.rotate(modelViewMatrix, modelViewMatrix, -jeepAngle, [0, 1, 0]);
+    mat4.translate(modelViewMatrix, modelViewMatrix, [-jeepX, -currentHeight, -jeepZ]);
 
-    // 2. Draw The Jeep (Parent)
-    // We move the matrix to where the jeep is
+    // --- TERRAIN ---
+    gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, modelViewMatrix);
+    gl.uniform4fv(shaderProgram.colorUniform, [0.5, 0.4, 0.2, 1.0]);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, terrainBuffer);
+    gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, terrainBuffer.itemSize, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, terrainIndexBuffer);
+    gl.drawElements(gl.TRIANGLES, terrainBuffer.numItems, gl.UNSIGNED_SHORT, 0);
+
+    // --- JEEP ---
     var jeepMatrix = mat4.clone(modelViewMatrix);
-    mat4.translate(jeepMatrix, jeepMatrix, [jeepX, 0, jeepZ]);
-    mat4.rotate(jeepMatrix, jeepMatrix, jeepAngle, [0, 1, 0]); // Rotate the jeep body
+    mat4.translate(jeepMatrix, jeepMatrix, [jeepX, currentHeight, jeepZ]);
+    mat4.rotate(jeepMatrix, jeepMatrix, jeepAngle, [0, 1, 0]);
 
-    // Draw Body
-    // Scale: 1.5 wide, 1.0 high, 2.5 long
-    drawCube(jeepMatrix, [0.0, 0.5, 0.0, 1.0], [1.5, 0.8, 2.5]); // Green Body
+    drawCube(jeepMatrix, [0.0, 0.5, 0.0, 1.0], [1.5, 0.8, 2.5]); // Body
 
-    // 3. Draw Wheels (Children)
-    // We use the jeepMatrix as the base, so wheels move WITH the jeep
-    // Front Left Wheel (Steering included)
-    var wheelMatrix = mat4.clone(jeepMatrix);
-    mat4.translate(wheelMatrix, wheelMatrix, [-1.5, -0.5, 1.5]);
-    mat4.rotate(wheelMatrix, wheelMatrix, frontWheelAngle, [0, 1, 0]); // <--- STEER (Y-axis)
-    mat4.rotate(wheelMatrix, wheelMatrix, wheelRotation, [1, 0, 0]);   // <--- SPIN (X-axis)
-    drawCube(wheelMatrix, [0.1, 0.1, 0.1, 1.0], [0.4, 0.4, 0.4]);
+    // Wheels
+    var wheelY = -0.5;
 
+    // Front Left
+    var wMat = mat4.clone(jeepMatrix);
+    mat4.translate(wMat, wMat, [-1.5, wheelY, 1.5]);
+    mat4.rotate(wMat, wMat, frontWheelAngle, [0, 1, 0]);
+    mat4.rotate(wMat, wMat, wheelRotation, [1, 0, 0]);
+    drawCube(wMat, [0.1, 0.1, 0.1, 1.0], [0.4, 0.4, 0.4]);
 
-    // Front Right Wheel (Steering included)
-    wheelMatrix = mat4.clone(jeepMatrix);
-    mat4.translate(wheelMatrix, wheelMatrix, [1.5, -0.5, 1.5]);
-    mat4.rotate(wheelMatrix, wheelMatrix, frontWheelAngle, [0, 1, 0]); // <--- STEER (Y-axis)
-    mat4.rotate(wheelMatrix, wheelMatrix, wheelRotation, [1, 0, 0]);   // <--- SPIN (X-axis)
-    drawCube(wheelMatrix, [0.1, 0.1, 0.1, 1.0], [0.4, 0.4, 0.4]);
+    // Front Right
+    wMat = mat4.clone(jeepMatrix);
+    mat4.translate(wMat, wMat, [1.5, wheelY, 1.5]);
+    mat4.rotate(wMat, wMat, frontWheelAngle, [0, 1, 0]);
+    mat4.rotate(wMat, wMat, wheelRotation, [1, 0, 0]);
+    drawCube(wMat, [0.1, 0.1, 0.1, 1.0], [0.4, 0.4, 0.4]);
 
     // Back Left
-    wheelMatrix = mat4.clone(jeepMatrix);
-    mat4.translate(wheelMatrix, wheelMatrix, [-1.5, -0.5, -1.5]);
-    mat4.rotate(wheelMatrix, wheelMatrix, wheelRotation, [1, 0, 0]);
-    drawCube(wheelMatrix, [0.1, 0.1, 0.1, 1.0], [0.4, 0.4, 0.4]);
+    wMat = mat4.clone(jeepMatrix);
+    mat4.translate(wMat, wMat, [-1.5, wheelY, -1.5]);
+    mat4.rotate(wMat, wMat, wheelRotation, [1, 0, 0]);
+    drawCube(wMat, [0.1, 0.1, 0.1, 1.0], [0.4, 0.4, 0.4]);
 
     // Back Right
-    wheelMatrix = mat4.clone(jeepMatrix);
-    mat4.translate(wheelMatrix, wheelMatrix, [1.5, -0.5, -1.5]);
-    mat4.rotate(wheelMatrix, wheelMatrix, wheelRotation, [1, 0, 0]);
-    drawCube(wheelMatrix, [0.1, 0.1, 0.1, 1.0], [0.4, 0.4, 0.4]);
+    wMat = mat4.clone(jeepMatrix);
+    mat4.translate(wMat, wMat, [1.5, wheelY, -1.5]);
+    mat4.rotate(wMat, wMat, wheelRotation, [1, 0, 0]);
+    drawCube(wMat, [0.1, 0.1, 0.1, 1.0], [0.4, 0.4, 0.4]);
 
     requestAnimationFrame(render);
 }
