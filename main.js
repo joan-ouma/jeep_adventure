@@ -1,4 +1,4 @@
-// main.js - Logic & Rendering
+// main.js - Logic & Rendering (Stable Version)
 
 var gl;
 var shaderProgram;
