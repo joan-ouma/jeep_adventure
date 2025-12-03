@@ -1,10 +1,22 @@
-// geometry.js - Shape Definitions
+// geometry.js - Shape Definitions (Stable Version)
 
 // Buffers
 var cubeBuffer;
 var cubeIndexBuffer;
 var terrainBuffer;
 var terrainIndexBuffer;
+
+// Helper to calculate height at any X,Z
+// This is the "Rolling Hills" math that worked smoothly
+function getTerrainHeight(x, z) {
+    var y = Math.sin(x * 0.1) * 2.0 + Math.cos(z * 0.1) * 2.0;
+
+    // Flatten area near start so jeep sits nicely
+    if(Math.abs(x) < 5 && Math.abs(z) < 15) {
+        y *= 0.2;
+    }
+    return y;
+}
 
 function initBuffers() {
     // 1. CUBE (Jeep Body & Wheels)
@@ -28,17 +40,15 @@ function initBuffers() {
     cubeBuffer.numItems = 36;
 
     // 2. TERRAIN (The Hills)
-    // We generate a grid of points
     terrainBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, terrainBuffer);
 
     var terrainVertices = [];
-    var size = 60; // Size of the map
-    var step = 1;  // Resolution
+    var size = 60; // Standard size (Stable)
+    var step = 1;  // Standard detail
 
     for (var x = -size; x <= size; x += step) {
         for (var z = -size; z <= size; z += step) {
-            // Requirement: Heightmap function (Sine patterns)
             var y = getTerrainHeight(x, z);
             terrainVertices.push(x, y - 2.5, z); // Shift down slightly
         }
@@ -67,14 +77,4 @@ function initBuffers() {
     }
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(terrainIndices), gl.STATIC_DRAW);
     terrainBuffer.numItems = terrainIndices.length;
-}
-
-// Helper to calculate height at any X,Z
-function getTerrainHeight(x, z) {
-    var y = Math.sin(x * 0.1) * 2.0 + Math.cos(z * 0.1) * 2.0;
-    // Flat area near start
-    if(Math.abs(x) < 5 && Math.abs(z) < 15) {
-        y *= 0.2;
-    }
-    return y;
 }
