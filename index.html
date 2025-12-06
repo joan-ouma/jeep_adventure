@@ -1,11 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8"><img src="static/grass.jpg"/>
+    <meta charset="UTF-8">
     <title>Off-Road Jeep Adventure</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #333; }
-        canvas { display: block; }
+        /* Removes margins and scrollbars */
+        body { margin: 0; overflow: hidden; background: #000; }
+
+        /* Forces canvas to cover the entire view width/height */
+        canvas { display: block; width: 100vw; height: 100vh; }
     </style>
 </head>
 <body>
@@ -14,7 +17,6 @@
 <script src="gl-matrix-min.js"></script>
 
 <script src="utils.js"></script>
-<script src="gl-matrix-min.js"></script>
 <script src="geometry.js"></script>
 <script src="main.js"></script>
 </body>
